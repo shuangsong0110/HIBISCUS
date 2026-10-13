@@ -1,0 +1,46 @@
+{
+  "age_max": 70.0,
+  "age_min": 40.0,
+  "environment": {
+    "command": "01_prepare_data.py --config config/toy.json --workdir example --force",
+    "hibiscus": "0.1.0",
+    "matplotlib": "3.10.8",
+    "numpy": "2.4.4",
+    "pandas": "3.0.1",
+    "python": "3.12.13",
+    "scipy": "1.17.1"
+  },
+  "files": {
+    "phenotype_tsv": "phenotype.tsv",
+    "plink_prefix": "geno",
+    "sample_ids_csv": "sample_ids.csv",
+    "truth_h2_csv": "truth_h2.csv",
+    "truth_surface_csv": "truth_surface.csv"
+  },
+  "hibiscus_version": "0.1.0",
+  "maf_max": 0.5,
+  "maf_min": 0.05,
+  "n_snps": 1000,
+  "n_subjects": 5000,
+  "name": "toy_dynamic",
+  "residual_variance": 0.6,
+  "seed": 20260921,
+  "simulate_seconds": 0.377256240000861,
+  "truth": {
+    "lambdas": [
+      0.2,
+      1.0
+    ],
+    "pattern": "monotone_rank2",
+    "z_center": 55.0,
+    "z_scale": 10.0
+  },
+  "truth_summary": {
+    "corr_grid_min_grid_max": 0.49776908894346605,
+    "grid_t_max": 70.0,
+    "grid_t_min": 40.0,
+    "h2_at_grid_max": 0.652100489731505,
+    "h2_at_grid_min": 0.2513812974460525
+  },
+  "visits_per_subject": 1
+}

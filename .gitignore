@@ -1,0 +1,14 @@
+# outputs of run_pipeline.sh; the toy inputs in example/data/toy_dynamic/ are tracked
+example/data/*
+!example/data/toy_dynamic/
+example/grm/
+example/results/
+example/figures/
+example/summary/
+__pycache__/
+*.pyc
+*.tmp.*
+.mplconfig/
+*.egg-info/
+build/
+dist/
