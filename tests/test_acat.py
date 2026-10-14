@@ -5,7 +5,7 @@ import math
 import numpy as np
 from scipy.stats import cauchy
 
-from hibiscus.multiple_testing import acat, bh_adjust
+from hibiscus.acat import acat
 
 
 def test_acat_matches_the_cauchy_tail():
@@ -31,8 +31,3 @@ def test_acat_edge_cases():
     assert acat([0.0, 0.3]) == 0.0
     assert math.isnan(acat([math.nan, 0.3]))
     assert abs(acat([0.5]) - 0.5) < 1e-12
-
-
-def test_bh_adjust_small_example():
-    q = bh_adjust(np.array([0.01, 0.04, 0.03, 0.2]))
-    assert np.allclose(q, [0.04, 0.04 * 4 / 3, 0.04 * 4 / 3, 0.2])

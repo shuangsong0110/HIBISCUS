@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap, Normalize
 
-C = {"ref": "tab:blue", "alt": "tab:red", "muted": "grey"}
+C = {"ref": "tab:blue", "muted": "grey"}
 SURFACE_CMAP = "viridis_r"
 BAND_ALPHA = 0.18
 PALEST = "#ffffe0"

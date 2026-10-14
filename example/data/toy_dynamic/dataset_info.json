@@ -2,7 +2,7 @@
   "age_max": 70.0,
   "age_min": 40.0,
   "environment": {
-    "command": "01_prepare_data.py --config config/toy.json --workdir example --force",
+    "command": "01_prepare_data.py --force",
     "hibiscus": "0.1.0",
     "matplotlib": "3.10.8",
     "numpy": "2.4.4",
@@ -25,7 +25,6 @@
   "name": "toy_dynamic",
   "residual_variance": 0.6,
   "seed": 20260921,
-  "simulate_seconds": 0.377256240000861,
   "truth": {
     "lambdas": [
       0.2,
@@ -35,6 +34,7 @@
     "z_center": 55.0,
     "z_scale": 10.0
   },
+  "truth_pattern": "monotone_rank2",
   "truth_summary": {
     "corr_grid_min_grid_max": 0.49776908894346605,
     "grid_t_max": 70.0,

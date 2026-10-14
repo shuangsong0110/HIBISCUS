@@ -24,10 +24,9 @@ def _fmt_p(p) -> str:
 
 
 def plot_h2_curve(curve: pd.DataFrame, he: dict, out_stem, *, truth: pd.DataFrame | None = None,
-                  n_subjects: int | None = None, tested: pd.DataFrame | None = None, p_h2=None, p_corr=None, p_joint=None,
+                  n_subjects: int | None = None, p_h2=None, p_corr=None, p_joint=None,
                   dpi_png: int = 200) -> None:
-    """curve: t, h2, h2_se_conditional; he: {h2, h2_se_conditional}; truth: t, h2_truth (optional);
-    tested: t, h2_raw, the raw curve at the h2 test's ages."""
+    """curve: t, h2, h2_se_conditional; he: {h2, h2_se_conditional}; truth: t, h2_truth (optional)."""
     use_ss_style()
     curve = curve.sort_values("t").reset_index(drop=True)
     t = curve["t"].to_numpy(float)
@@ -46,13 +45,10 @@ def plot_h2_curve(curve: pd.DataFrame, he: dict, out_stem, *, truth: pd.DataFram
     if truth is not None:
         truth = truth.sort_values("t")
         ax.plot(truth["t"].to_numpy(float), truth["h2_truth"].to_numpy(float), ":", color=C["muted"], lw=1.6)
-    if tested is not None:
-        ax.plot(tested["t"].to_numpy(float), tested["h2_raw"].to_numpy(float), "o", mfc="white", mec=C["alt"], mew=1.3, ms=5.5)
     ax.set_xlabel("Age (years)")
     ax.set_ylabel("SNP heritability")
     ax.set_xlim(float(t.min()) - 1.0, float(t.max()) + 1.0)
-    ymax = max(float(np.max(upper)), he_h2 + he_se, float(truth["h2_truth"].max()) if truth is not None else 0.0,
-               float(tested["h2_raw"].max()) if tested is not None else 0.0)
+    ymax = max(float(np.max(upper)), he_h2 + he_se, float(truth["h2_truth"].max()) if truth is not None else 0.0)
     ax.set_ylim(0.0, min(1.0, ymax * 1.15 + 0.02))
     half_frame(ax)
 
@@ -68,9 +64,6 @@ def plot_h2_curve(curve: pd.DataFrame, he: dict, out_stem, *, truth: pd.DataFram
     if truth is not None:
         handles.append(Line2D([], [], color=C["muted"], ls=":", lw=1.6))
         labels.append(r"true $h^2(\mathrm{Age})$")
-    if tested is not None:
-        handles.append(Line2D([], [], marker="o", ls="", mfc="white", mec=C["alt"], mew=1.3, ms=5.5))
-        labels.append("raw curve at the tested ages")
     group_title = "Estimates" + (f" (N = {n_subjects:,})" if n_subjects else "")
     groups = [(group_title, handles, labels)]
     if p_h2 is not None or p_corr is not None or p_joint is not None:
@@ -91,8 +84,6 @@ def plot_h2_curve(curve: pd.DataFrame, he: dict, out_stem, *, truth: pd.DataFram
                          "h2_he": he_h2, "h2_he_se_conditional": he_se})
     if truth is not None:
         data = data.merge(truth[["t", "h2_truth"]], on="t", how="left")
-    if tested is not None:
-        data = data.merge(tested[["t", "h2_raw"]].rename(columns={"h2_raw": "h2_raw_tested"}), on="t", how="left")
     data_path = out_stem.parent / (out_stem.name + "_data.csv")
     data.to_csv(data_path, index=False, float_format="%.10g")
     print(f"wrote {data_path}")

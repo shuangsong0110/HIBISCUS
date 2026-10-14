@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 
 from _toy import small_problem
-from hibiscus.estimate import (accumulate_surfaces_dense_single_visit, accumulate_surfaces_single_visit, fit_diag2,
-                               project_psd, sparse_he_no_t, surface_to_correlation)
+from hibiscus.estimate import (accumulate_surfaces_dense_single_visit, accumulate_surfaces_single_visit, fit_hibiscus,
+                               project_psd, fit_he, surface_to_correlation)
 from hibiscus.kernel import smooth_grid_curve, smoothing_matrix
 from hibiscus.simulate import truth_h2_frame
 
@@ -27,7 +27,7 @@ def test_flat_weights_reduce_to_he():
     residual = y - y.mean()
     ones = np.ones((len(y), 3))
     num, den = accumulate_surfaces_single_visit(ones, residual, prob["edges"])
-    he = sparse_he_no_t(y, prob["edges"])
+    he = fit_he(y, prob["edges"])
     assert np.allclose(num, he["A"]) and np.allclose(den, he["B"])
     assert abs(he["sigma_g2_raw"] * he["B"] - he["A"]) < 1e-9
 
@@ -50,7 +50,7 @@ def test_psd_projection_smoother_and_correlation():
 
 def test_fit_recovers_truth_roughly():
     prob = small_problem(n=1500, m=400, grid_size=7, all_edges=False, seed=11)
-    fit = fit_diag2(prob["y"], prob["t"], prob["design"])
+    fit = fit_hibiscus(prob["y"], prob["t"], prob["design"])
     truth = truth_h2_frame(prob["grid"], prob["cfg"])["h2_truth"].to_numpy()
     assert fit["h2"].shape == truth.shape
     assert np.all((fit["h2"] >= 0) & (fit["h2"] <= 1))

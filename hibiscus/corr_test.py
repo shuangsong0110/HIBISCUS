@@ -3,7 +3,7 @@
 H0: R_G(t_a, t_b) = 1 for all a < b  <=>  C_g(s, t) = a(s) a(t) with a nuisance amplitude a(t).
 Pipeline:
   1. source fit on the test grid: raw pre-PSD surface C_raw, denominator D, total variance Y (ESS 0.2N);
-  2. local-quadratic HE diagonal G_a (design ESS N^0.8) and local-linear Y_loc with y-gradients;
+  2. local-quadratic HE diagonal G_a and local-linear Y_loc with y-gradients, on the same kernel weights;
   3. smooth basis from the normalised kernel-weight Gram matrix (capture 0.999, rank <= 12) and the
      logistic genetic-fraction fit  G_a = Y_loc,a expit(b_a' eta)  with its implicit influence;
   4. subject-level rank-one null  a_i = sqrt(Y_i q_i), e_i = Y_i (1 - q_i);  K_hat = S S'/q random scores;
@@ -530,12 +530,9 @@ def interpolation_basis(source_grid, target) -> np.ndarray:
     return np.column_stack([np.interp(target, source_grid, basis[:, j]) for j in range(len(source_grid))])
 
 
-def run_directional_p2(
-    y, ages, edges: dict, random_scores, source_cfg: dict, grid, source: dict, *,
-    basis_variance_capture: float = 0.999, max_basis_rank: int = 12, nuisance_ess_exponent: float = 0.8,
-    edge_chunk: int = 200000, phenotype_key: str = "trait",
-) -> dict:
-    """The correlation test on one trait. `source` = {raw, den, sigma_y2} from the estimator on `grid` (source ESS)."""
+def run_directional_p2(y, ages, edges: dict, random_scores, source_cfg: dict, grid, source: dict, *,
+                       basis_variance_capture: float = 0.999, max_basis_rank: int = 12, edge_chunk: int = 200000) -> dict:
+    """The correlation test on one trait. `source` = {raw, den, sigma_y2} from the estimator on `grid`."""
     y = np.asarray(y, float)
     ages = np.asarray(ages, float)
     grid = np.asarray(grid, float)
@@ -552,27 +549,20 @@ def run_directional_p2(
     if source_raw.shape != (len(grid), len(grid)) or source_sigma_y2.shape != (len(grid),):
         raise ValueError("source fit and test grid dimensions differ")
 
-    # --- source kernel weights, total variance and its gradient (ESS 0.2N) ---
+    # --- kernel weights, total variance and its gradient ---
     source_bandwidths, source_weights = bandwidths_and_weights(ages, grid, source_cfg)
     source_total, source_total_gradient = grid_local_variance_and_y_derivative(y, ages, grid, source_weights)
     source_total_error = float(np.max(np.abs(source_total - source_sigma_y2)) / max(np.max(np.abs(source_sigma_y2)), TINY))
     if source_total_error > 1e-8:
         raise RuntimeError(f"source total variance does not match the step-3 fit: {source_total_error:g}")
 
-    # --- local-quadratic diagonal with the design ESS N^0.8 (nuisance diagonal) ---
-    nuisance_cfg = dict(source_cfg)
-    nuisance_cfg["target_effective_n"] = float(n ** float(nuisance_ess_exponent))
-    nuisance_cfg["bandwidth_min"] = float(np.ptp(grid) / n)
-    nuisance_bandwidths, nuisance_weights = bandwidths_and_weights(ages, grid, nuisance_cfg)
-    nuisance_total, nuisance_total_gradient = grid_local_variance_and_y_derivative(y, ages, grid, nuisance_weights)
-    local = diagonal_local_quadratic_sparse(y, ages, grid, nuisance_weights, nuisance_bandwidths, row, col, kij, chunk_size=edge_chunk)
+    # --- local-quadratic genetic diagonal on the same kernel, and the smooth logistic genetic fraction ---
+    local = diagonal_local_quadratic_sparse(y, ages, grid, source_weights, source_bandwidths, row, col, kij, chunk_size=edge_chunk)
     raw_genetic = np.asarray(local["genetic_curve"], float)
     raw_genetic_gradient = np.asarray(local["genetic_gradient"], float)
-
-    # --- smooth logistic genetic-fraction nuisance ---
     smooth_basis = build_smooth_basis(source_weights, basis_variance_capture, max_basis_rank)
     basis_subject = np.column_stack([np.interp(ages, grid, smooth_basis.vectors[:, j]) for j in range(smooth_basis.rank)])
-    amplitude_fit = fit_local_diagonal_genetic_fraction(raw_genetic, nuisance_total, smooth_basis.vectors)
+    amplitude_fit = fit_local_diagonal_genetic_fraction(raw_genetic, source_total, smooth_basis.vectors)
     source_total_subject = np.interp(ages, grid, source_sigma_y2)
     genetic_fraction_subject = expit(basis_subject @ amplitude_fit["eta"])
     amplitude_subject = np.sqrt(source_total_subject * genetic_fraction_subject)
@@ -603,7 +593,6 @@ def run_directional_p2(
     identifiable = (raw_diagonal > raw_tol) & (null_diagonal > null_tol)
     if int(np.sum(identifiable)) < 2:
         raise ValueError("correlation test has fewer than two identifiable grid points")
-    active_grid = grid[identifiable]
     active_raw = source_raw[np.ix_(identifiable, identifiable)]
     active_null = null_surface[np.ix_(identifiable, identifiable)]
     active_den = source_den[np.ix_(identifiable, identifiable)]
@@ -611,67 +600,29 @@ def run_directional_p2(
     active_eta_tangents = forwarded["tangent_surfaces"][:, identifiable][:, :, identifiable]
     active_total_tangents = forwarded["total_variance_tangent_surfaces"][:, identifiable][:, :, identifiable]
 
-    # --- residual, gradients, covariance ---
+    # --- residual, gradients, covariance, directional test ---
     krw = sparse_offdiag_product(row, col, kij, (y - np.mean(y))[:, None] * source_weights, chunk_size=edge_chunk)
     active_krw = np.asarray(krw[:, identifiable], float)
     p2_residual, observed_correlation, null_correlation = correlation_residual(active_raw, active_null)
     eta_correlation_tangent = correlation_tangent(active_null, active_eta_tangents)
     total_correlation_tangent = correlation_tangent(active_null, active_total_tangents)
     nuisance_fit_if = local_diagonal_genetic_fraction_influence(
-        raw_genetic_gradient, nuisance_total_gradient, raw_genetic, nuisance_total,
+        raw_genetic_gradient, source_total_gradient, raw_genetic, source_total,
         amplitude_fit["genetic_fraction_grid"], smooth_basis.vectors,
     )
     pair_gradient = raw_pair_gradient_block(active_weights, active_krw, active_den, active_null)
     pair_gradient -= nuisance_fit_if @ eta_correlation_tangent.T
     pair_gradient -= source_total_gradient @ total_correlation_tangent.T
     pair_gradient -= np.mean(pair_gradient, axis=0, keepdims=True)
-
     p2_covariance = random_score_factor_covariance(pair_gradient, amplitude_subject[:, None], residual_variance_p2, random_scores)
     p2_directional = directional_correlation_test(p2_residual, p2_covariance)
-
-    row_out = {
-        "phenotype_key": phenotype_key,
-        "status": "complete",
-        "n_subjects": int(n),
-        "matched_edge_count": int(len(kij)),
-        "random_grm_score_rank": int(random_scores.shape[1]),
-        "grid_min": float(grid[0]), "grid_max": float(grid[-1]), "grid_size": int(len(grid)),
-        "source_target_effective_n": float(source_cfg["target_effective_n"]),
-        "corr_nuisance_ess_exponent": float(nuisance_ess_exponent),
-        "corr_nuisance_target_effective_n": float(n ** float(nuisance_ess_exponent)),
-        "corr_nuisance_bandwidth_min": float(np.min(nuisance_bandwidths)),
-        "corr_nuisance_bandwidth_max": float(np.max(nuisance_bandwidths)),
-        "corr_local_surface_valid_fraction": float(np.mean(local["surface_valid"])),
-        "corr_local_normal_condition_max": float(np.max(local["normal_condition"])),
-        "corr_basis_rank": int(smooth_basis.rank),
-        "corr_basis_capture_2d": float(smooth_basis.capture_2d),
-        "corr_identifiable_grid_count": int(np.sum(identifiable)),
-        "corr_pair_count": int(len(p2_residual)),
-        "corr_fraction_min": float(np.min(genetic_fraction_subject)),
-        "corr_fraction_max": float(np.max(genetic_fraction_subject)),
-        "corr_min_residual_variance": float(np.min(residual_variance_p2)),
-        "corr_mean_departure": p2_directional["departure"],
-        "corr_mean_variance": p2_directional["variance"],
-        "corr_mean_z": p2_directional["z"],
+    return {
         "p_corr": p2_directional["pvalue_lower"],
-        "corr_observed_min_correlation": float(np.min(observed_correlation)),
-        "corr_forward_null_min_correlation": float(np.min(null_correlation)),
-        "source_total_relative_error": source_total_error,
+        "z": p2_directional["z"],
+        "mean_departure": p2_directional["departure"],
+        "pair_count": int(len(p2_residual)),
+        "identifiable_grid_count": int(np.sum(identifiable)),
+        "basis_rank": int(smooth_basis.rank),
+        "observed_min_correlation": float(np.min(observed_correlation)),
+        "forward_null_min_correlation": float(np.min(null_correlation)),
     }
-    diagnostics = {
-        "grid": grid,
-        "active_grid": active_grid,
-        "identifiable": identifiable,
-        "residual": p2_residual,
-        "covariance": p2_covariance,
-        "observed_correlation": observed_correlation,
-        "forward_correlation": null_correlation,
-        "null_surface": null_surface,
-        "raw_surface": source_raw,
-        "raw_genetic_local_quadratic": raw_genetic,
-        "total_variance_nuisance_grid": nuisance_total,
-        "genetic_fraction_grid": amplitude_fit["genetic_fraction_grid"],
-        "source_bandwidths": source_bandwidths,
-        "nuisance_bandwidths": nuisance_bandwidths,
-    }
-    return {"row": row_out, "diagnostics": diagnostics}

@@ -1,4 +1,4 @@
-"""Kernel-weighted Haseman-Elston surface estimator ("diag2") and the flat-kernel HE estimate.
+"""Kernel-weighted Haseman-Elston surface estimator and the age-independent (flat-kernel) HE estimate.
 
 Estimator (single visit, r = y - mean(y), Gaussian weights w_ia):
   num[a,b] = sum_E K_ij r_i r_j (w_ia w_jb + w_ib w_ja)/2,  den[a,b] = sum_E K_ij^2 (w_ia w_jb + w_ib w_ja)/2
@@ -181,7 +181,7 @@ def smooth_sigma_g2(cov: np.ndarray, grid_values: np.ndarray, config: dict) -> n
     return np.asarray(sigma_g2, dtype=float)
 
 
-def fit_diag2(y, t, design: dict) -> dict:
+def fit_hibiscus(y, t, design: dict) -> dict:
     """Point estimates on the design grid. Returns arrays; use *_frame helpers for the CSV schemas."""
     y = np.asarray(y, dtype=float)
     t = np.asarray(t, dtype=float)
@@ -214,7 +214,7 @@ def fit_diag2(y, t, design: dict) -> dict:
     }
 
 
-def sparse_he_no_t(y, edges: dict) -> dict:
+def fit_he(y, edges: dict) -> dict:
     """Flat-kernel HE on the same edges: sigma_g^2 = sum K r r / sum K^2 (clipped to [0, sigma_y^2])."""
     y = np.asarray(y, dtype=float)
     y_centered = y - np.mean(y)
@@ -268,11 +268,11 @@ def curve_frame(method: str, grid_t, sigma_g2, sigma_eps2, sigma_y2, h2) -> pd.D
     )
 
 
-def diag2_curve_frame(fit: dict, method: str = "diag2") -> pd.DataFrame:
+def hibiscus_curve_frame(fit: dict, method: str = "hibiscus") -> pd.DataFrame:
     return curve_frame(method, fit["grid_t"], fit["sigma_g2"], fit["sigma_eps2"], fit["sigma_y2"], fit["h2"])
 
 
-def he_curve_frame(he: dict, grid_t, method: str = "sparse_he_no_t") -> pd.DataFrame:
+def he_curve_frame(he: dict, grid_t, method: str = "he") -> pd.DataFrame:
     size = len(np.asarray(grid_t))
     return curve_frame(
         method, grid_t, np.repeat(he["sigma_g2"], size), np.repeat(he["sigma_eps2"], size),
@@ -280,34 +280,12 @@ def he_curve_frame(he: dict, grid_t, method: str = "sparse_he_no_t") -> pd.DataF
     )
 
 
-def surface_frame(method: str, grid_t, cov: np.ndarray) -> pd.DataFrame:
+def surface_frame(grid_t, cov: np.ndarray) -> pd.DataFrame:
+    """surfaces.csv: t_row, t_col, cov (PSD genetic covariance), corr (R_G)."""
     grid_t = np.asarray(grid_t, dtype=float)
     corr = surface_to_correlation(cov)
     rows = []
     for i, t_row in enumerate(grid_t):
         for j, t_col in enumerate(grid_t):
-            rows.append({"t_row": float(t_row), "t_col": float(t_col), "method": method, "cov": float(cov[i, j]), "corr": float(corr[i, j])})
+            rows.append({"t_row": float(t_row), "t_col": float(t_col), "cov": float(cov[i, j]), "corr": float(corr[i, j])})
     return pd.DataFrame(rows)
-
-
-def surface_rows_frame(fit: dict) -> pd.DataFrame:
-    """surface_rows_cg_surface_diag2.csv: raw, PSD, correlation and denominator surfaces (long)."""
-    grid_t = fit["grid_t"]
-    rows = []
-    for i, t_row in enumerate(grid_t):
-        for j, t_col in enumerate(grid_t):
-            rows.append(
-                {
-                    "t_row": float(t_row),
-                    "t_col": float(t_col),
-                    "cg_raw": float(fit["raw"][i, j]),
-                    "cg_psd": float(fit["psd"][i, j]),
-                    "cg_corr": float(fit["corr"][i, j]),
-                    "cg_denom": float(fit["den_surface"][i, j]),
-                }
-            )
-    return pd.DataFrame(rows)
-
-
-def pivot_surface(rows: pd.DataFrame, column: str) -> np.ndarray:
-    return rows.pivot(index="t_row", columns="t_col", values=column).sort_index().sort_index(axis=1).to_numpy(float)

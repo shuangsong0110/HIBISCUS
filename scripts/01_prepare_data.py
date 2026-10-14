@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""Step 1 - data preparation.
+"""Step 1 - input files.
 
-Default: simulate the toy dataset described in the config and write it in the real input formats
-  data/<name>/geno.{bed,bim,fam}   PLINK 1 genotypes (SNP-major .bed)
-  data/<name>/phenotype.tsv        FID<TAB>IID<TAB>y<TAB>t, one row per visit
-  data/<name>/sample_ids.csv       FID,IID in .fam (= GRM) order
-  data/<name>/truth_h2.csv, truth_surface.csv, dataset_info.json
-Validation mode (real data): --validate checks a phenotype TSV, sample-ID CSV and PLINK prefix
-against the format specification without writing anything.
+Checks data/<name>/phenotype.tsv, sample_ids.csv and geno.{bed,bim,fam} (or the files given with
+--phenotype-tsv, --sample-ids-csv and --plink-prefix) against the input format. The two toy datasets,
+toy_dynamic and toy_null, are simulated into data/<name>/ when their files are absent.
 """
 from __future__ import annotations
 
@@ -20,8 +16,7 @@ import numpy as np
 
 from hibiscus.cli import common_parser, environment, relpath, resolve, timed
 from hibiscus.io import PlinkBedReader, match_phenotype_to_samples, read_phenotype_first_entry, read_sample_ids, save_json
-from hibiscus.kernel import grid_points
-from hibiscus.simulate import simulate_dataset, write_dataset
+from hibiscus.simulate import TOY_TRUTH, simulate_dataset, toy_config, write_dataset
 
 
 def validate(paths: dict) -> int:
@@ -69,34 +64,25 @@ def validate(paths: dict) -> int:
 
 def main() -> int:
     parser = common_parser(__doc__)
-    parser.add_argument("--validate", action="store_true",
-                        help="validate user-supplied inputs instead of simulating (automatic when the config has no simulation block)")
+    parser.add_argument("--n-subjects", type=int, default=5000, help="toy datasets only (default 5000)")
+    parser.add_argument("--n-snps", type=int, default=1000, help="toy datasets only (default 1000)")
+    parser.add_argument("--seed", type=int, default=20260921, help="toy datasets only")
     args = parser.parse_args()
-    cfg, paths = resolve(args)
-    if args.validate or "n_subjects" not in cfg["dataset"]:
-        if not args.validate:
-            print("no simulation block in the config: validating the input files instead")
-        return validate(paths)
-
-    data_dir = paths["data"]
-    info_path = data_dir / "dataset_info.json"
-    if info_path.exists() and not args.force:
-        print(f"SKIP: {relpath(info_path, paths['workdir'])} exists (use --force to regenerate)")
+    paths = resolve(args)
+    if paths["name"] in TOY_TRUTH and (args.force or not paths["phenotype_tsv"].exists()):
+        cfg = toy_config(paths["name"], args.n_subjects, args.n_snps, args.seed)
+        grid = np.arange(cfg["age_min"], cfg["age_max"] + 1.0)
+        print(f"simulating {paths['name']}: N={cfg['n_subjects']} M={cfg['n_snps']} seed={cfg['seed']}")
+        dataset, seconds = timed(simulate_dataset, cfg)
+        info = write_dataset(paths["data"], dataset, cfg, grid)
+        info["environment"] = environment()
+        save_json(paths["data"] / "dataset_info.json", info)
+        summary = info["truth_summary"]
+        print(f"  truth h2: {summary['h2_at_grid_min']:.3f} at age {summary['grid_t_min']:g} -> {summary['h2_at_grid_max']:.3f} at age {summary['grid_t_max']:g}; "
+              f"true R_G({summary['grid_t_min']:g},{summary['grid_t_max']:g}) = {summary['corr_grid_min_grid_max']:.3f}")
+        print(f"  wrote {relpath(paths['data'], paths['workdir'])}/ (geno.bed/.bim/.fam, phenotype.tsv, sample_ids.csv, truth_*.csv, dataset_info.json) in {seconds:.1f}s")
         return 0
-    dataset_cfg = dict(cfg["dataset"])
-    dataset_cfg["name"] = paths["name"]
-    grid = grid_points(cfg["grid"]["t_min"], cfg["grid"]["t_max"], cfg["grid"]["size"])
-    print(f"simulating {paths['name']}: N={dataset_cfg['n_subjects']} M={dataset_cfg['n_snps']} seed={dataset_cfg['seed']}")
-    dataset, seconds = timed(simulate_dataset, dataset_cfg)
-    info = write_dataset(data_dir, dataset, dataset_cfg, grid)
-    info["environment"] = environment()
-    info["simulate_seconds"] = seconds
-    save_json(info_path, info)
-    summary = info["truth_summary"]
-    print(f"  truth h2: {summary['h2_at_grid_min']:.3f} at age {summary['grid_t_min']:g} -> {summary['h2_at_grid_max']:.3f} at age {summary['grid_t_max']:g}; "
-          f"true R_G({summary['grid_t_min']:g},{summary['grid_t_max']:g}) = {summary['corr_grid_min_grid_max']:.3f}")
-    print(f"  wrote {relpath(data_dir, paths['workdir'])}/ (geno.bed/.bim/.fam, phenotype.tsv, sample_ids.csv, truth_*.csv, dataset_info.json) in {seconds:.1f}s")
-    return 0
+    return validate(paths)
 
 
 if __name__ == "__main__":

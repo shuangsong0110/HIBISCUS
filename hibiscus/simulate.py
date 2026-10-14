@@ -108,6 +108,24 @@ def simulate_genotypes(n, m, maf_min, maf_max, rng):
     return x, raw.astype(np.int8)
 
 
+TOY_TRUTH = {
+    "toy_dynamic": {"pattern": "monotone_rank2", "lambdas": [0.2, 1.0], "z_center": 55.0, "z_scale": 10.0},
+    "toy_null": {"pattern": "constant_rank1", "lambdas": [0.4]},
+}
+
+
+def toy_config(name: str, n_subjects: int = 5000, n_snps: int = 1000, seed: int = 20260921) -> dict:
+    """The two toy datasets: ages 40-70, MAF 0.05-0.50, residual variance 0.60; h2 rises 0.25 -> 0.65 (toy_dynamic)
+    or stays at 0.40 (toy_null)."""
+    if name not in TOY_TRUTH:
+        raise ValueError(f"unknown toy dataset {name!r}; choose one of {sorted(TOY_TRUTH)}")
+    return {
+        "name": name, "seed": int(seed), "n_subjects": int(n_subjects), "n_snps": int(n_snps),
+        "maf_min": 0.05, "maf_max": 0.5, "age_min": 40.0, "age_max": 70.0, "residual_variance": 0.6,
+        "truth": dict(TOY_TRUTH[name]),
+    }
+
+
 def simulate_dataset(dataset_cfg: dict) -> dict:
     """Deterministic toy dataset. RNG draw order: ages -> genotypes -> theta -> residuals."""
     rng = np.random.RandomState(int(dataset_cfg["seed"]))
@@ -157,6 +175,7 @@ def write_dataset(out_dir, dataset: dict, dataset_cfg: dict, grid_t) -> dict:
     info = {
         "hibiscus_version": __version__,
         "name": dataset_cfg["name"],
+        "truth_pattern": dataset_cfg["truth"]["pattern"],
         "seed": int(dataset_cfg["seed"]),
         "n_subjects": int(n),
         "n_snps": int(m),

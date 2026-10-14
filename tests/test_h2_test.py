@@ -4,7 +4,7 @@ import numpy as np
 from scipy import stats
 
 from _toy import small_problem
-from hibiscus.estimate import fit_diag2, numerator_surface
+from hibiscus.estimate import fit_hibiscus, numerator_surface
 from hibiscus.h2_test import (bootstrap_law, draw_null, flat_null_model, flat_test, flatness_statistic, gchisq_logsf,
                            local_linear_variance_many, raw_curves_many, target_indices)
 from hibiscus.grm import genetic_score_bank_from_standardized
@@ -49,7 +49,7 @@ def test_batched_curves_equal_the_estimator():
         assert np.allclose(out["raw_diag"][:, q], raw_diag, rtol=1e-12, atol=0)
         sy2 = local_sigma_y2_grid(y, t, prob["grid"], design["config"])
         assert np.max(np.abs(out["sigma_y2"][:, q] - sy2)) < 1e-10 * np.max(sy2)
-    fit = fit_diag2(prob["y"], t, design)
+    fit = fit_hibiscus(prob["y"], t, design)
     assert np.allclose(out["raw_diag"][:, 0], np.diag(fit["raw"]), rtol=1e-12)
     W = design["subject_weights"]
     assert np.allclose(local_linear_variance_many(Y, t, prob["grid"], W), out["sigma_y2"])
@@ -86,7 +86,7 @@ def test_score_bank_has_the_grm_covariance():
 def test_flat_test_runs_end_to_end():
     prob = small_problem(n=600, m=300, grid_size=31, all_edges=False, seed=12)
     design, t, y = prob["design"], prob["t"], prob["y"]
-    fit = fit_diag2(y, t, design)
+    fit = fit_hibiscus(y, t, design)
     idx = target_indices(prob["grid"], [45.0, 50.0, 55.0, 60.0, 65.0])
     bank, _ = genetic_score_bank_from_standardized(prob["z"], n_cols=50 * 4, seed=1, edges=prob["edges"])
     out = flat_test(y, t, design, fit["raw"], fit["sigma_y2"], idx, bank.astype(float), n_boot=50, seed=0)
