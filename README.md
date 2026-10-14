@@ -19,7 +19,6 @@ pandas, matplotlib); the toy example below runs in about two minutes on a laptop
 * [Step 6: Figures](#framed_picture-step-6-figures)
 * [Output](#bulb-output)
 * [A toy example](#key-a-toy-example)
-* [Options and fixed settings](#wrench-options-and-fixed-settings)
 * [Maintainer](#busts_in_silhouette-maintainer)
 * [References](#references)
 
@@ -126,19 +125,22 @@ Steps 3–6 only touch the stored edges.
 python scripts/03_estimate.py --workdir mywork --dataset mytrait
 ```
 
-The age grid is every integer age from the youngest to the oldest matched subject. Each subject
-receives Gaussian kernel weights around every grid age, with the bandwidth chosen per grid age so
-that the kernel effective sample size is 20% of N (within 3–12 years). The genetic covariance surface
-C_g(t₁, t₂) is the kernel-weighted Haseman–Elston regression of the phenotype cross-products of the
-stored subject pairs on their GRM entries; it is projected to positive semi-definite, its diagonal
-is smoothed (bandwidth 2 years) and divided by the local phenotypic variance σ²_y(t) to give h²(t),
-and its correlation gives R_G(t₁, t₂). The age-independent HE estimate ĥ²_HE on the same edges is
-reported as a reference. The matched phenotype is standardised (mean 0, SD 1) before estimation, so
-h²(t), R_G, the standard errors and the tests do not depend on the unit of `y`; σ²_g(t), σ²_y(t), σ²_ε(t)
-and the covariance surface are converted back to the original units when written (the SD is recorded
-as `y_scale` in `fit_manifest.json`).
+#### Output: `results/<name>/curves.csv`, `surfaces.csv`, `fit_manifest.json`
 
-#### Output: `results/<name>/curves.csv` (h²(t), σ²_g(t), σ²_ε(t), σ²_y(t) on the grid, `method` = `hibiscus` or `he`), `surfaces.csv` (C_g and R_G for every pair of grid ages), `fit_manifest.json`
+`curves.csv` has one row per grid age t (every integer age from the youngest to the oldest subject) and
+method:
+- `method`: `hibiscus`, the age-varying estimate, or `he`, the age-independent Haseman–Elston estimate
+  (constant over t);
+- `sigma_g2`: genetic variance σ²_g(t); `sigma_eps2`: residual variance σ²_ε(t) = σ²_y(t) − σ²_g(t);
+  `sigma_y2`: phenotypic variance σ²_y(t);
+- `h2`: SNP heritability h²(t) = σ²_g(t) / σ²_y(t).
+
+`surfaces.csv` has one row per pair of grid ages (t₁, t₂):
+- `cov`: genetic covariance C_g(t₁, t₂);
+- `corr`: genetic correlation R_G(t₁, t₂) = C_g(t₁, t₂) / √(C_g(t₁, t₁) C_g(t₂, t₂)).
+
+Variances and covariances are in the units of `y`². `fit_manifest.json` records the grid and the
+settings of the fit.
 
 ## :bar_chart: Step 4: Standard errors
 
@@ -148,12 +150,7 @@ as `y_scale` in `fit_manifest.json`).
 python scripts/04_se.py --workdir mywork --dataset mytrait
 ```
 
-Conditional standard errors of ĥ²(t) and ĥ²_HE (given genotypes, edges and ages) from the
-influence function of each estimator, with the residual variance σ²_y(t) − σ²_g(t). The step adds
-`h2_se_conditional`, `h2_ci_lower_conditional` and `h2_ci_upper_conditional` (± 1.96 SE, clipped to
-[0, 1]) to every row of `curves.csv`; the figure of Step 6 draws the ± 1 SE band.
-
-#### Output: SE columns in `results/<name>/curves.csv`
+#### Output: three columns added to every row of `results/<name>/curves.csv`: `h2_se_conditional`, the standard error of `h2`, and `h2_ci_lower_conditional`, `h2_ci_upper_conditional`, the ± 1.96 SE interval clipped to [0, 1]. The figure of Step 6 draws the ± 1 SE band.
 
 ## :mag: Step 5: Tests of age variation
 
@@ -169,28 +166,17 @@ from the boundary of the kernel estimate; give integer ages inside the grid.
 
 ### Step 5.1: The h² test
 
-H₀: h²(t) = c for some constant c. The test uses the raw curve ĥ²_raw(t), the smoothed kernel
-estimate before the positive semi-definite projection of Step 3, at every 5th year of the test range
-(45, 50, 55, 60, 65 for the toy). The statistic compares these values with their own mean, each
-deviation scaled by its null standard deviation. The null distribution is obtained by simulating
-B = 200 phenotypes from the fitted model with its heritability flattened to c*, the mean of ĥ²_raw
-at the tested ages clipped to [0.01, 0.99] (genetic effects redrawn from the score bank of Step 2,
-correlations kept), and passing each through the same estimator. `p_h2` is the upper tail of the
-statistic under the fitted law of the null replicates, usable far below 1/B.
+H₀: h²(t) = c for some constant c, i.e. SNP heritability does not change over the test range.
 
 ### Step 5.2: The correlation test
 
-H₀: R_G(t₁, t₂) = 1 for all pairs of ages on a 25-point grid over the test range, i.e.
-C_g(t₁, t₂) = a(t₁) a(t₂). A rank-one null with a smooth amplitude a(t) is fitted and forwarded
-through the same estimator; the mean departure of the observed correlations from the null
-correlations, standardised by its analytic variance, gives Z and the one-sided `p_corr` = Φ(Z):
-the alternative is that the correlations fall below 1 (Z < 0), so Z > 0 gives `p_corr` > 0.5. If
-the null model cannot be fitted, `p_corr` is missing and the pipeline continues.
+H₀: R_G(t₁, t₂) = 1 for all pairs of ages in the test range, i.e. the same genetic effects act at
+every age.
 
 ### Step 5.3: The joint test
 
 `p_joint = ACAT(p_h2, p_corr)`, the equal-weight Cauchy combination of the two p-values
-(Liu & Xie 2020); it is missing when `p_corr` is missing.
+(Liu & Xie 2020).
 
 #### Output: `results/<name>/tests.csv` (`p_h2`, `p_corr`, `p_joint`)
 
@@ -274,26 +260,6 @@ with `--dataset cohort`, then Steps 3–6 per trait with `--dataset <trait>` and
 explicitly, e.g. `--edges-npz mywork/grm/cohort/edges.npz --edges-json mywork/grm/cohort/edges.json
 --random-scores-npy mywork/grm/cohort/random_scores.npy --genetic-scores-npy mywork/grm/cohort/genetic_scores.npy`
 (and `--plink-prefix`, `--sample-ids-csv` for the cohort's genotype files).
-
-## :wrench: Options and fixed settings
-
-The only analysis choice is the test age range:
-
-| Option | Meaning | Default |
-|---|---|---|
-| `--test-range T_MIN T_MAX` | ages on which the h² test (every 5th year) and the correlation test (25-point grid) are run; integers inside the age grid | observed age range shrunk by 5 years at each end |
-
-Everything else is read from the data (N, M, the age grid) or fixed in
-[`hibiscus/defaults.py`](hibiscus/defaults.py):
-
-| Setting | Value |
-|---|---|
-| Edge selection | 99.5% of each subject's Σ K²_ij, at most 1,024 pairs per subject |
-| Random GRM scores / score bank | rank 256 / 800 columns |
-| Kernel | Gaussian; effective sample size 0.2 N; bandwidth 3–12 years; diagonal smoothing 2 years |
-| h² test | B = 200 null replicates; null rank ≤ 4; c* clipped to [0.01, 0.99] |
-| Correlation test | smooth-basis capture 99.9%, rank ≤ 12 |
-| Standard errors | relative finite-difference step 10⁻⁶ |
 
 ## :busts_in_silhouette: Maintainer
 
